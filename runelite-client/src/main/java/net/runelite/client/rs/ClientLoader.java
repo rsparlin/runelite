@@ -26,6 +26,8 @@
  */
 package net.runelite.client.rs;
 
+import java.lang.reflect.Field;
+import java.security.SecureRandom;
 import com.google.archivepatcher.applier.FileByFileV1DeltaApplier;
 import com.google.common.base.Strings;
 import com.google.common.hash.Hashing;
@@ -441,7 +443,7 @@ public class ClientLoader implements Supplier<Applet>
 		}
 	}
 
-	private ClassLoader createJarClassLoader(File jar) throws IOException, ClassNotFoundException
+	private ClassLoader createJarClassLoader(File jar) throws IOException, ClassNotFoundException, IllegalAccessException
 	{
 		try (JarFile jarFile = new JarFile(jar))
 		{
@@ -495,7 +497,25 @@ public class ClientLoader implements Supplier<Applet>
 				if (name.endsWith(".class"))
 				{
 					name = name.substring(0, name.length() - 6);
-					classLoader.loadClass(name);
+					Class<?> theClass = classLoader.loadClass(name);
+
+					/* Fixed isaac seed */
+					final SecureRandom fakeRand = new SecureRandom() {
+						private static final long serialVersionUID = 1L;
+
+						@Override
+						public int nextInt() {
+							return 2;
+						}
+					};
+
+					for (Field f : theClass.getDeclaredFields()) {
+						if (!java.lang.reflect.Modifier.isStatic(f.getModifiers()) || !f.getType().isInstance(fakeRand))
+							continue;
+
+						f.setAccessible(true);
+						f.set(null, fakeRand);
+					}
 				}
 			}
 
